@@ -1,0 +1,6 @@
+node_modules
+dist
+.DS_Store
+*.local
+# Original brand files; the app ships the web-sized copies in public/img.
+assets/
