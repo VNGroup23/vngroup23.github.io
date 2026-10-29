@@ -19,7 +19,14 @@ const SERVER_ERRORS: Partial<Record<string, Errors>> = {
   NO_QUESTIONS: { form: 'BTC chưa sẵn sàng, bạn thử lại sau ít phút nhé.' },
 }
 
-export function Register({ status, onJoined }: { status: GameStatus; onJoined: (a: Attempt) => void }) {
+interface Props {
+  status: GameStatus
+  entryCode: string
+  onJoined: (a: Attempt) => void
+  onBadEntry: () => void
+}
+
+export function Register({ status, entryCode, onJoined, onBadEntry }: Props) {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [departments, setDepartments] = useState<string[]>([])
@@ -60,9 +67,10 @@ export function Register({ status, onJoined }: { status: GameStatus; onJoined: (
     if (next.name || next.phone || next.department) return
     setBusy(true)
     try {
-      onJoined(await api.join({ name: normalizeName(name), phone: normalizePhone(phone), department }))
+      onJoined(await api.join({ name: normalizeName(name), phone: normalizePhone(phone), department }, entryCode))
     } catch (err) {
       const code = err instanceof ApiError ? err.code : 'NETWORK'
+      if (code === 'BAD_ENTRY') return onBadEntry()
       setErrors(SERVER_ERRORS[code] ?? { form: 'Không kết nối được. Bạn kiểm tra mạng rồi thử lại nhé.' })
     } finally {
       setBusy(false)

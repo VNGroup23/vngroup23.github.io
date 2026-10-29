@@ -10,6 +10,8 @@ create table if not exists public.app_config (
   admin_key_hash text
 );
 insert into public.app_config (id) values (1) on conflict do nothing;
+-- Secret carried by the QR code on the event screen; joining requires it.
+alter table public.app_config add column if not exists entry_code text;
 
 create table if not exists public.game (
   id int primary key default 1 check (id = 1),
@@ -98,6 +100,15 @@ end $$;
 
 -- ---- Internal helpers ---------------------------------------------------------------
 
+-- Random code from an alphabet without look-alikes (no 0/O, 1/I/L).
+create or replace function public._random_code(n int) returns text
+language sql volatile as $$
+  select string_agg(substr('23456789ABCDEFGHJKMNPQRSTUVWXYZ', 1 + floor(random() * 31)::int, 1), '')
+  from generate_series(1, n)
+$$;
+
+update public.app_config set entry_code = public._random_code(8) where id = 1 and entry_code is null;
+
 create or replace function public._ms(ts timestamptz) returns bigint
 language sql stable as $$ select (extract(epoch from ts) * 1000)::bigint $$;
 
@@ -161,16 +172,22 @@ language sql stable security definer set search_path = public as $$
   select coalesce(array_agg(name order by position, name), '{}') from departments
 $$;
 
-create or replace function public.join_game(p_name text, p_phone text, p_department text, p_user_agent text default null)
+create or replace function public.check_entry(p_code text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select entry_code is not null and upper(trim(coalesce(p_code, ''))) = entry_code from app_config where id = 1), false)
+$$;
+
+drop function if exists public.join_game(text, text, text, text);
+create or replace function public.join_game(p_name text, p_phone text, p_department text, p_entry text, p_user_agent text default null)
 returns json language plpgsql security definer set search_path = public, extensions as $$
 declare
   v_name text := regexp_replace(trim(normalize(coalesce(p_name, ''), NFC)), '\s+', ' ', 'g');
   v_phone text := regexp_replace(coalesce(p_phone, ''), '[\s.()-]', '', 'g');
-  v_alphabet text := '23456789ABCDEFGHJKMNPQRSTUVWXYZ'; -- no 0/O, 1/I/L
   v_code text;
   v_game game;
   v_row attempts;
 begin
+  if not public.check_entry(p_entry) then raise exception 'BAD_ENTRY'; end if;
   if v_phone like '+84%' then v_phone := '0' || substr(v_phone, 4); end if;
   if v_phone !~ '^0[35789][0-9]{8}$' then raise exception 'INVALID_PHONE'; end if;
   if v_name !~ '^[[:alpha:]]+( [[:alpha:]]+)+$' or length(v_name) > 50 then raise exception 'INVALID_NAME'; end if;
@@ -189,7 +206,7 @@ begin
   if not exists (select 1 from questions) then raise exception 'NO_QUESTIONS'; end if;
 
   loop
-    v_code := 'VN23-' || (select string_agg(substr(v_alphabet, 1 + floor(random() * length(v_alphabet))::int, 1), '') from generate_series(1, 4));
+    v_code := 'VN23-' || public._random_code(4);
     exit when not exists (select 1 from attempts where code = v_code);
   end loop;
 
@@ -407,6 +424,23 @@ begin
     join questions q on q.id = l.question_id), '[]'::json);
 end $$;
 
+create or replace function public.admin_entry(p_key text) returns text
+language plpgsql security definer set search_path = public as $$
+begin
+  perform public._require_admin(p_key);
+  return (select entry_code from app_config where id = 1);
+end $$;
+
+-- A new code makes every QR code printed so far stop working.
+create or replace function public.admin_rotate_entry(p_key text) returns text
+language plpgsql security definer set search_path = public as $$
+declare v_code text;
+begin
+  perform public._require_admin(p_key);
+  update app_config set entry_code = public._random_code(8) where id = 1 returning entry_code into v_code;
+  return v_code;
+end $$;
+
 create or replace function public.admin_set_departments(p_key text, p_names text[]) returns text[]
 language plpgsql security definer set search_path = public as $$
 begin
@@ -424,7 +458,8 @@ revoke execute on all functions in schema public from public, anon, authenticate
 grant execute on function
   public.get_state(),
   public.get_departments(),
-  public.join_game(text, text, text, text),
+  public.check_entry(text),
+  public.join_game(text, text, text, text, text),
   public.get_attempt(text),
   public.get_quiz(text),
   public.save_answer(text, text, text),
@@ -438,5 +473,7 @@ grant execute on function
   public.admin_results(text),
   public.admin_disqualify(text, uuid, text),
   public.admin_answer_log(text),
+  public.admin_entry(text),
+  public.admin_rotate_entry(text),
   public.admin_set_departments(text, text[])
 to anon, authenticated;

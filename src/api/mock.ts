@@ -130,7 +130,11 @@ export const mockApi: GameApi = {
 
   getDepartments: () => later(DEPARTMENTS),
 
-  async join(player) {
+  // Any code passes in the preview; the DEV panel links to `?k=DEMO`.
+  checkEntry: (code) => later(code.trim().length > 0),
+
+  async join(player, entryCode) {
+    if (!entryCode.trim()) throw new ApiError('BAD_ENTRY')
     const db = read()
     const existing = db.attempts[player.phone]
     if (existing) {

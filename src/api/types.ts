@@ -45,6 +45,7 @@ export interface QuizPayload {
 }
 
 export const API_ERROR_CODES = [
+  'BAD_ENTRY',
   'PHONE_TAKEN',
   'GAME_CLOSED',
   'NOT_OPEN',
@@ -74,8 +75,10 @@ export interface GameApi {
   getState(): Promise<GameState>
   subscribe(onChange: (state: GameState) => void): () => void
   getDepartments(): Promise<string[]>
-  /** Creates an attempt, or resumes the existing one when phone and name match. */
-  join(player: Player): Promise<Attempt>
+  /** Whether a code from the event-screen QR code is the current entry code. */
+  checkEntry(code: string): Promise<boolean>
+  /** Creates an attempt, or resumes the existing one when phone and name match. Needs the QR entry code. */
+  join(player: Player, entryCode: string): Promise<Attempt>
   getAttempt(token: string): Promise<Attempt | null>
   getQuiz(token: string): Promise<QuizPayload>
   saveAnswer(token: string, questionId: string, optionId: string): Promise<void>

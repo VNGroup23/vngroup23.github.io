@@ -50,6 +50,9 @@ export function DevPanel() {
               </li>
             ))}
           </ol>
+          <p>
+            Vào như vừa quét QR: <a href="?k=DEMO">?k=DEMO</a>
+          </p>
           <p>Xem nhanh từng màn:</p>
           <p className="dev-links">
             {PREVIEWS.map((p) => (

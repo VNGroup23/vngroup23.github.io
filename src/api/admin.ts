@@ -43,5 +43,7 @@ export const adminApi = {
   disqualify: (key: string, attemptId: string, reason: string | null) =>
     rpc<void>('admin_disqualify', { p_key: key, p_attempt_id: attemptId, p_reason: reason }),
   answerLog: (key: string) => rpc<AnswerLogRow[]>('admin_answer_log', { p_key: key }),
+  entryCode: (key: string) => rpc<string>('admin_entry', { p_key: key }),
+  rotateEntryCode: (key: string) => rpc<string>('admin_rotate_entry', { p_key: key }),
   setDepartments: (key: string, names: string[]) => rpc<string[]>('admin_set_departments', { p_key: key, p_names: names }),
 }

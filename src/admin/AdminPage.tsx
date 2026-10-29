@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, ApiError, isMock } from '../api'
 import { adminApi, type ResultRow } from '../api/admin'
-import { Button, Logo } from '../components/ui'
+import { SparkleField } from '../components/Effects'
+import { downloadQr, QrImage } from '../components/QrImage'
+import { Button, DiamondDivider, Logo } from '../components/ui'
 import { TOP_N } from '../config'
 import { asText, downloadCsv } from '../lib/csv'
+import { playUrl } from '../lib/entry'
 import { formatClock, formatCountdown, formatDateTime, formatDuration, formatPhone } from '../lib/format'
 import { useGame, useTicker } from '../lib/useGame'
 
 const KEY_STORAGE = 'vng23-admin-key'
 const STATUS_LABEL = { waiting: 'Đang chờ mở game', open: 'Đang thi', closed: 'Đã kết thúc' }
 
-export function AdminPage() {
+/** `dashboard` is BTC's control page (#admin); `qr` is the full-screen QR board (#qr). */
+export function AdminPage({ mode }: { mode: 'dashboard' | 'qr' }) {
   const [key, setKey] = useState(() => sessionStorage.getItem(KEY_STORAGE) ?? '')
   const [authed, setAuthed] = useState(false)
   const [checking, setChecking] = useState(!!key)
@@ -54,7 +58,7 @@ export function AdminPage() {
           <section className="card">Trang quản trị chỉ chạy khi app đã nối Supabase.</section>
         </main>
       ) : authed ? (
-        <Dashboard adminKey={key} onLogout={logout} />
+        mode === 'qr' ? <QrBoard adminKey={key} /> : <Dashboard adminKey={key} onLogout={logout} />
       ) : (
         <Login checking={checking} error={loginError} onSubmit={login} />
       )}
@@ -184,7 +188,6 @@ function Dashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => v
   const qualified = rows.filter((r) => r.rank !== null).length
   const shown = view === 'top' ? rows.filter((r) => r.rank !== null && r.rank <= TOP_N) : rows
   const remaining = state?.endsAt ? state.endsAt - now : 0
-  const playUrl = `${location.origin}${location.pathname}`
 
   return (
     <main className="admin">
@@ -233,6 +236,8 @@ function Dashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => v
         </div>
         {message && <p className="admin-msg">{message}</p>}
       </section>
+
+      <EntryCard adminKey={adminKey} />
 
       <section className="card admin-results">
         <div className="admin-results-head">
@@ -308,7 +313,7 @@ function Dashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => v
         </div>
       </section>
 
-      <Tools adminKey={adminKey} status={status} busy={busy} run={run} playUrl={playUrl} />
+      <Tools adminKey={adminKey} status={status} busy={busy} run={run} />
     </main>
   )
 }
@@ -318,13 +323,11 @@ function Tools({
   status,
   busy,
   run,
-  playUrl,
 }: {
   adminKey: string
   status: string | undefined
   busy: boolean
   run: (action: () => Promise<unknown>, done?: string) => Promise<void>
-  playUrl: string
 }) {
   const [departments, setDepartments] = useState('')
 
@@ -347,10 +350,6 @@ function Tools({
       <summary className="eyebrow">Cài đặt & công cụ chạy thử</summary>
       <div className="admin-tools-body">
         <div>
-          <p className="admin-tool-title">Link cho người chơi (dùng để tạo mã QR)</p>
-          <code className="admin-code">{playUrl}</code>
-        </div>
-        <div>
           <p className="admin-tool-title">Danh sách phòng ban (mỗi dòng một phòng)</p>
           <textarea className="field-input admin-textarea" value={departments} onChange={(e) => setDepartments(e.target.value)} placeholder={'IT\nKế toán\nNhân sự'} />
           <Button variant="glass" onClick={saveDepartments} disabled={busy}>
@@ -370,5 +369,101 @@ function Tools({
         </div>
       </div>
     </details>
+  )
+}
+
+function EntryCard({ adminKey }: { adminKey: string }) {
+  const [code, setCode] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    adminApi.entryCode(adminKey).then(setCode).catch(() => {})
+  }, [adminKey])
+
+  const url = code ? playUrl(code) : ''
+  const rotate = async () => {
+    if (!confirm('Đổi mã mới? Mọi mã QR đã in hoặc đã chiếu sẽ không dùng được nữa. Người đã vào phòng chờ không bị ảnh hưởng.')) return
+    setBusy(true)
+    try {
+      setCode(await adminApi.rotateEntryCode(adminKey))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="card admin-entry">
+      {code ? <QrImage value={url} size={168} /> : <div className="qr qr--empty" />}
+      <div className="admin-entry-body">
+        <p className="eyebrow">Mã QR vào game</p>
+        <p className="muted">Người chơi chỉ vào được khi quét mã này. Mở link không có mã sẽ chỉ thấy màn “Quét mã QR để tham gia”.</p>
+        <code className="admin-code">{url || '…'}</code>
+        <div className="admin-actions">
+          <Button onClick={() => window.open('#qr', '_blank')} disabled={!code}>
+            Mở màn hình QR (chiếu lên bảng)
+          </Button>
+          <Button variant="glass" onClick={() => downloadQr(url, 'ma-qr-thu-thach-23-nam.png')} disabled={!code}>
+            Tải ảnh QR để in
+          </Button>
+          <Button variant="glass" onClick={rotate} disabled={busy || !code}>
+            Đổi mã mới
+          </Button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/** Full-screen board for the event screen: the QR code, live lobby count and the countdown. */
+function QrBoard({ adminKey }: { adminKey: string }) {
+  const { state, serverNow } = useGame()
+  const now = useTicker(serverNow, 500)
+  const [code, setCode] = useState<string | null>(null)
+
+  // Re-read the code so a new one picked on the admin page reaches the screen.
+  useEffect(() => {
+    const load = () => adminApi.entryCode(adminKey).then(setCode).catch(() => {})
+    load()
+    const id = setInterval(load, 30_000)
+    return () => clearInterval(id)
+  }, [adminKey])
+
+  const status = state?.status
+  return (
+    <main className="board">
+      <SparkleField count={30} />
+      <section className="board-info">
+        <Logo className="board-logo rise" />
+        <p className="eyebrow rise">Minigame kỷ niệm 23 năm</p>
+        <h1 className="board-title shimmer-text rise">Thử thách 23 năm</h1>
+        <DiamondDivider />
+        <ol className="board-steps rise">
+          <li>Mở camera điện thoại</li>
+          <li>Quét mã QR bên cạnh</li>
+          <li>Điền họ tên, số điện thoại, phòng ban</li>
+        </ol>
+        <div className="board-status rise">
+          {status === 'open' ? (
+            <>
+              <span className="board-number">{formatCountdown((state?.endsAt ?? 0) - now)}</span>
+              <span>Game đang diễn ra · vào muộn sẽ còn ít thời gian hơn</span>
+            </>
+          ) : status === 'closed' ? (
+            <span className="board-number board-number--small">Game đã kết thúc</span>
+          ) : (
+            <>
+              <span key={state?.lobbyCount} className="board-number count-bump">
+                {state?.lobbyCount ?? 0}
+              </span>
+              <span>người đã vào phòng chờ</span>
+            </>
+          )}
+        </div>
+      </section>
+      <section className="board-qr rise">
+        <div className="board-qr-frame">{code ? <QrImage value={playUrl(code)} size={640} /> : <div className="qr qr--empty" />}</div>
+        <p className="eyebrow">Quét để tham gia</p>
+      </section>
+    </main>
   )
 }

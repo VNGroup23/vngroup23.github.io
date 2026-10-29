@@ -31,6 +31,8 @@ try {
   if (rows[0].n > 0 && !process.argv.includes('--force')) throw new Error(`${rows[0].n} attempts exist — rerun with --force to wipe them`)
   const { rows: key } = await client.query('select q.id, q.correct, q.keep_order, cardinality(q.options) as n from questions q')
   const correct = Object.fromEntries(key.map((r) => [r.id, r.correct]))
+  const { rows: cfg } = await client.query('select entry_code from app_config where id = 1')
+  const ENTRY = cfg[0].entry_code
   const optionCount = Object.fromEntries(key.map((r) => [r.id, r.n]))
   const total = key.length
   const passing = Math.ceil(total * 0.8)
@@ -42,16 +44,19 @@ try {
   check('anon cannot read attempts', (await client.query('select * from attempts').then(() => null).catch((e) => e.message))?.includes('permission denied'))
   check('state starts waiting', (await call('get_state')).status === 'waiting')
   check('departments', JSON.stringify(await call('get_departments')) === '["IT"]')
-  check('rejects one-word name', (await error('join_game', 'An', '0912345678', 'IT', null)) === 'INVALID_NAME')
-  check('rejects name with digits', (await error('join_game', 'Nguyễn Văn 2', '0912345678', 'IT', null)) === 'INVALID_NAME')
-  check('rejects short phone', (await error('join_game', 'Nguyễn Văn Ấn', '091234', 'IT', null)) === 'INVALID_PHONE')
-  check('rejects unknown department', (await error('join_game', 'Nguyễn Văn Ấn', '0912345678', 'Kế toán', null)) === 'INVALID_DEPARTMENT')
+  check('entry code from the QR is accepted', (await call('check_entry', ENTRY.toLowerCase())) === true)
+  check('wrong entry code is rejected', (await call('check_entry', 'SAIMA234')) === false)
+  check('joining without the QR code is refused', (await error('join_game', 'Nguyễn Văn Ấn', '0912345678', 'IT', 'SAIMA234', null)) === 'BAD_ENTRY')
+  check('rejects one-word name', (await error('join_game', 'An', '0912345678', 'IT', ENTRY, null)) === 'INVALID_NAME')
+  check('rejects name with digits', (await error('join_game', 'Nguyễn Văn 2', '0912345678', 'IT', ENTRY, null)) === 'INVALID_NAME')
+  check('rejects short phone', (await error('join_game', 'Nguyễn Văn Ấn', '091234', 'IT', ENTRY, null)) === 'INVALID_PHONE')
+  check('rejects unknown department', (await error('join_game', 'Nguyễn Văn Ấn', '0912345678', 'Kế toán', ENTRY, null)) === 'INVALID_DEPARTMENT')
 
-  const a = await call('join_game', '  Nguyễn   Văn Ấn ', '0912 345 678', 'IT', 'smoke-test')
+  const a = await call('join_game', '  Nguyễn   Văn Ấn ', '0912 345 678', 'IT', ENTRY, 'smoke-test')
   check('joins with Vietnamese name, normalised', a.player.name === 'Nguyễn Văn Ấn' && a.player.phone === '0912345678', a.code)
-  const again = await call('join_game', 'nguyễn văn ấn', '+84912345678', 'IT', null)
+  const again = await call('join_game', 'nguyễn văn ấn', '+84912345678', 'IT', ENTRY, null)
   check('same phone + same name (any case) resumes', again.token === a.token)
-  check('same phone + other name is refused', (await error('join_game', 'Trần Thị Bé', '0912345678', 'IT', null)) === 'PHONE_TAKEN')
+  check('same phone + other name is refused', (await error('join_game', 'Trần Thị Bé', '0912345678', 'IT', ENTRY, null)) === 'PHONE_TAKEN')
   check('quiz locked before opening', (await error('get_quiz', a.token)) === 'NOT_OPEN')
   check('wrong admin key is refused', (await error('admin_open', 'nope')) === 'FORBIDDEN')
 
@@ -67,8 +72,8 @@ try {
     check(`${k.id} keeps its option order`, q.options.map((o) => o.id).join() === Array.from({ length: k.n }, (_, i) => `${k.id}:${i}`).join())
   }
 
-  const b = await call('join_game', 'Trần Thị Bích Ngọc', '0987654321', 'IT', null)
-  const c = await call('join_game', 'Lê Văn Chậm', '0977000111', 'IT', null)
+  const b = await call('join_game', 'Trần Thị Bích Ngọc', '0987654321', 'IT', ENTRY, null)
+  const c = await call('join_game', 'Lê Văn Chậm', '0977000111', 'IT', ENTRY, null)
   const order = await call('get_quiz', b.token)
   check('players get different question orders', order.questions.map((q) => q.id).join() !== quiz.questions.map((q) => q.id).join())
 
@@ -94,7 +99,7 @@ try {
   const late = await call('get_state')
   check('rehearsal: 65 s left', Math.abs(late.endsAt - late.serverNow - 65000) < 3000)
   await call('admin_close', KEY)
-  check('closed game refuses new players', (await error('join_game', 'Phạm Văn Muộn', '0933222111', 'IT', null)) === 'GAME_CLOSED')
+  check('closed game refuses new players', (await error('join_game', 'Phạm Văn Muộn', '0933222111', 'IT', ENTRY, null)) === 'GAME_CLOSED')
   const settled = await call('get_attempt', c.token)
   check('closing auto-submits the unsubmitted', settled.submittedAt && settled.autoSubmitted === true)
 

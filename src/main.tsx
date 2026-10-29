@@ -11,8 +11,8 @@ if (isMock) {
   if (preview) mockDev.seedPreview(preview)
 }
 
-// #admin opens BTC's page; switching the hash reloads into the other page.
-const isAdmin = location.hash === '#admin'
+// #admin opens BTC's page and #qr the event-screen board; switching the hash reloads.
+const page = location.hash === '#admin' ? <AdminPage mode="dashboard" /> : location.hash === '#qr' ? <AdminPage mode="qr" /> : <App />
 window.addEventListener('hashchange', () => location.reload())
 
-createRoot(document.getElementById('root')!).render(<StrictMode>{isAdmin ? <AdminPage /> : <App />}</StrictMode>)
+createRoot(document.getElementById('root')!).render(<StrictMode>{page}</StrictMode>)
