@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { AdminPage } from './admin/AdminPage'
 import App from './App'
 import { isMock } from './api'
 import { mockDev } from './api/mock'
@@ -10,8 +11,8 @@ if (isMock) {
   if (preview) mockDev.seedPreview(preview)
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+// #admin opens BTC's page; switching the hash reloads into the other page.
+const isAdmin = location.hash === '#admin'
+window.addEventListener('hashchange', () => location.reload())
+
+createRoot(document.getElementById('root')!).render(<StrictMode>{isAdmin ? <AdminPage /> : <App />}</StrictMode>)

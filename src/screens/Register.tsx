@@ -1,35 +1,69 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { api, ApiError, type Attempt, type GameStatus } from '../api'
 import { Button, DiamondDivider, Field, SelectField, stagger } from '../components/ui'
-import { DEPARTMENTS } from '../data/departments'
 import { normalizeName, normalizePhone, validateName, validatePhone } from '../lib/validate'
 
 interface Errors {
   name?: string
   phone?: string
+  department?: string
   form?: string
+}
+
+const SERVER_ERRORS: Partial<Record<string, Errors>> = {
+  PHONE_TAKEN: { phone: 'Số này đã được dùng với tên khác. Nếu là bạn, hãy nhập đúng họ tên đã dùng.' },
+  INVALID_NAME: { name: 'Họ tên chỉ gồm chữ cái, ít nhất 2 chữ' },
+  INVALID_PHONE: { phone: 'Số điện thoại cần đủ 10 số, bắt đầu bằng 0' },
+  INVALID_DEPARTMENT: { department: 'Phòng ban không hợp lệ, bạn chọn lại nhé' },
+  GAME_CLOSED: { form: 'Game đã kết thúc, không thể vào thi nữa.' },
+  NO_QUESTIONS: { form: 'BTC chưa sẵn sàng, bạn thử lại sau ít phút nhé.' },
 }
 
 export function Register({ status, onJoined }: { status: GameStatus; onJoined: (a: Attempt) => void }) {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
-  const [department, setDepartment] = useState(DEPARTMENTS[0])
+  const [departments, setDepartments] = useState<string[]>([])
+  const [department, setDepartment] = useState('')
   const [errors, setErrors] = useState<Errors>({})
   const [busy, setBusy] = useState(false)
 
+  useEffect(() => {
+    let alive = true
+    let retry: ReturnType<typeof setTimeout>
+    const load = () =>
+      api
+        .getDepartments()
+        .then((list) => {
+          if (!alive) return
+          setDepartments(list)
+          // A single department is preselected; with several, the player must choose.
+          if (list.length === 1) setDepartment(list[0])
+        })
+        .catch(() => {
+          if (alive) retry = setTimeout(load, 2000)
+        })
+    load()
+    return () => {
+      alive = false
+      clearTimeout(retry)
+    }
+  }, [])
+
   async function submit(e: FormEvent) {
     e.preventDefault()
-    const next: Errors = { name: validateName(name) ?? undefined, phone: validatePhone(phone) ?? undefined }
+    const next: Errors = {
+      name: validateName(name) ?? undefined,
+      phone: validatePhone(phone) ?? undefined,
+      department: department ? undefined : 'Vui lòng chọn phòng ban',
+    }
     setErrors(next)
-    if (next.name || next.phone) return
+    if (next.name || next.phone || next.department) return
     setBusy(true)
     try {
       onJoined(await api.join({ name: normalizeName(name), phone: normalizePhone(phone), department }))
     } catch (err) {
       const code = err instanceof ApiError ? err.code : 'NETWORK'
-      if (code === 'PHONE_TAKEN') setErrors({ phone: 'Số này đã được dùng với tên khác. Nếu là bạn, hãy nhập đúng họ tên đã dùng.' })
-      else if (code === 'GAME_CLOSED') setErrors({ form: 'Game đã kết thúc, không thể vào thi nữa.' })
-      else setErrors({ form: 'Không kết nối được. Bạn kiểm tra mạng rồi thử lại nhé.' })
+      setErrors(SERVER_ERRORS[code] ?? { form: 'Không kết nối được. Bạn kiểm tra mạng rồi thử lại nhé.' })
     } finally {
       setBusy(false)
     }
@@ -69,7 +103,15 @@ export function Register({ status, onJoined }: { status: GameStatus; onJoined: (
             error={errors.phone}
             helper="Mỗi số chỉ chơi được 1 lần"
           />
-          <SelectField label="Phòng ban" name="department" value={department} options={DEPARTMENTS} onChange={setDepartment} />
+          <SelectField
+            label="Phòng ban"
+            name="department"
+            value={department}
+            options={departments}
+            onChange={setDepartment}
+            placeholder={departments.length ? 'Chọn phòng ban' : 'Đang tải…'}
+            error={errors.department}
+          />
         </div>
         <div className="spacer" />
         {errors.form && (

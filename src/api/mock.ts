@@ -1,6 +1,7 @@
 // In-browser stand-in for the real backend, so the UI can be previewed before Supabase is set up.
 // State lives in localStorage and syncs across tabs through the `storage` event.
 import { GAME_DURATION_MS, PASS_RATE, SESSION_KEY } from '../config'
+import { DEPARTMENTS } from '../data/departments'
 import { SAMPLE_QUESTIONS } from '../data/questions.sample'
 import { hashSeed, mulberry32, randomToken, shuffled } from '../lib/rng'
 import { sameName } from '../lib/validate'
@@ -126,6 +127,8 @@ export const mockApi: GameApi = {
     listeners.add(onChange)
     return () => listeners.delete(onChange)
   },
+
+  getDepartments: () => later(DEPARTMENTS),
 
   async join(player) {
     const db = read()

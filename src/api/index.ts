@@ -1,8 +1,9 @@
 import { mockApi } from './mock'
+import { supabaseApi } from './supabase'
 import type { GameApi } from './types'
 
-// Swapped for the Supabase client once the project credentials arrive.
-export const api: GameApi = mockApi
-export const isMock = true
+// Without Supabase settings (e.g. a fresh clone) the app runs on the in-browser mock.
+export const isMock = !import.meta.env.VITE_SUPABASE_URL
+export const api: GameApi = isMock ? mockApi : supabaseApi
 
 export * from './types'

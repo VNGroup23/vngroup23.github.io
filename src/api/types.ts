@@ -5,6 +5,8 @@ export interface GameState {
   openedAt: number | null
   endsAt: number | null
   lobbyCount: number
+  /** BTC has revealed the Top 20 on the event screen. */
+  resultsRevealed?: boolean
   /** Server clock when this state was produced; clients derive their clock offset from it. */
   serverNow: number
 }
@@ -42,7 +44,23 @@ export interface QuizPayload {
   answers: Record<string, string>
 }
 
-export type ApiErrorCode = 'PHONE_TAKEN' | 'GAME_CLOSED' | 'NOT_OPEN' | 'NOT_FOUND' | 'ALREADY_SUBMITTED' | 'NETWORK'
+export const API_ERROR_CODES = [
+  'PHONE_TAKEN',
+  'GAME_CLOSED',
+  'NOT_OPEN',
+  'NOT_FOUND',
+  'ALREADY_SUBMITTED',
+  'INVALID_NAME',
+  'INVALID_PHONE',
+  'INVALID_DEPARTMENT',
+  'NO_QUESTIONS',
+  'NOT_WAITING',
+  'FORBIDDEN',
+  'RETRY',
+  'NETWORK',
+] as const
+
+export type ApiErrorCode = (typeof API_ERROR_CODES)[number]
 
 export class ApiError extends Error {
   readonly code: ApiErrorCode
@@ -55,6 +73,7 @@ export class ApiError extends Error {
 export interface GameApi {
   getState(): Promise<GameState>
   subscribe(onChange: (state: GameState) => void): () => void
+  getDepartments(): Promise<string[]>
   /** Creates an attempt, or resumes the existing one when phone and name match. */
   join(player: Player): Promise<Attempt>
   getAttempt(token: string): Promise<Attempt | null>

@@ -4,3 +4,5 @@ dist
 *.local
 # Original brand files; the app ships the web-sized copies in public/img.
 assets/
+# Real questions and answers — never commit (the repo is public).
+private/
