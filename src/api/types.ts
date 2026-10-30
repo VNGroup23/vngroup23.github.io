@@ -5,7 +5,7 @@ export interface GameState {
   openedAt: number | null
   endsAt: number | null
   lobbyCount: number
-  /** BTC has revealed the Top 20 on the event screen. */
+  /** BTC has revealed the winners on the event screen. */
   resultsRevealed?: boolean
   /** Rehearsal mode: no lobby, every player gets their own 20 minutes from joining. */
   testMode?: boolean

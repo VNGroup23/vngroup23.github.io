@@ -32,7 +32,7 @@ export const SAMPLE_QUESTIONS: SourceQuestion[] = [
   {
     id: 'q20',
     text: 'Điều nào sau đây đúng về minigame “Thử thách 23 năm”?',
-    options: ['Có 20 phút để làm bài', 'Cần đúng từ 80% để được xét Top 20', 'Thứ tự câu hỏi của mỗi người khác nhau', 'Tất cả các ý trên'],
+    options: ['Có 20 phút để làm bài', 'Cần đúng từ 80% để được xét Top 5', 'Thứ tự câu hỏi của mỗi người khác nhau', 'Tất cả các ý trên'],
     correct: 3,
     keepOrder: true,
   },
