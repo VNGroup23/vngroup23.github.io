@@ -77,6 +77,13 @@ export default function App() {
     }
   }, [status, attempt])
 
+  // Test mode switched on while this player waited in the lobby: fetch their own deadline.
+  const needsDeadline = !!state?.testMode && !!attempt && !attempt.submittedAt && attempt.deadline == null
+  const token = attempt?.token
+  useEffect(() => {
+    if (needsDeadline && token) api.getAttempt(token).then((a) => a && setAttempt(a))
+  }, [needsDeadline, token])
+
   const join = useCallback((a: Attempt) => {
     localStorage.setItem(SESSION_KEY, a.token)
     setAttempt(a)

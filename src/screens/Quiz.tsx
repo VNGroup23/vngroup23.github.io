@@ -59,8 +59,9 @@ export function Quiz({ attempt, state, serverNow, onSubmitted }: Props) {
     }
   }, [attempt.token, onSubmitted])
 
-  const endsAt = state.endsAt ?? 0
-  const total = Math.max(1, endsAt - (state.openedAt ?? 0))
+  // In test mode each player has their own window from joining; otherwise everyone shares BTC's.
+  const endsAt = (state.testMode ? attempt.deadline : state.endsAt) ?? 0
+  const total = Math.max(1, endsAt - ((state.testMode ? attempt.enteredAt : state.openedAt) ?? 0))
   const remaining = Math.max(0, endsAt - now)
   const danger = remaining <= WARNING_MS
 

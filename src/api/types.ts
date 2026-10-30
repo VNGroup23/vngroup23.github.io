@@ -7,6 +7,8 @@ export interface GameState {
   lobbyCount: number
   /** BTC has revealed the Top 20 on the event screen. */
   resultsRevealed?: boolean
+  /** Rehearsal mode: no lobby, every player gets their own 20 minutes from joining. */
+  testMode?: boolean
   /** Server clock when this state was produced; clients derive their clock offset from it. */
   serverNow: number
 }
@@ -24,6 +26,8 @@ export interface Attempt {
   enteredAt: number
   submittedAt: number | null
   autoSubmitted: boolean
+  /** When this attempt's time runs out; null while the game has not opened. */
+  deadline?: number | null
 }
 
 export interface QuizOption {

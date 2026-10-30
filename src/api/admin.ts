@@ -39,6 +39,7 @@ export const adminApi = {
   setRemaining: (key: string, seconds: number) => rpc<GameState>('admin_set_remaining', { p_key: key, p_seconds: seconds }),
   reveal: (key: string, on: boolean) => rpc<GameState>('admin_reveal', { p_key: key, p_on: on }),
   reset: (key: string) => rpc<GameState>('admin_reset', { p_key: key }),
+  setTestMode: (key: string, on: boolean) => rpc<GameState>('admin_set_test_mode', { p_key: key, p_on: on }),
   results: (key: string) => rpc<ResultRow[]>('admin_results', { p_key: key }),
   disqualify: (key: string, attemptId: string, reason: string | null) =>
     rpc<void>('admin_disqualify', { p_key: key, p_attempt_id: attemptId, p_reason: reason }),

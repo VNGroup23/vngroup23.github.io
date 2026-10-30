@@ -112,7 +112,7 @@ function Dashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => v
     (e: unknown) => {
       const code = e instanceof ApiError ? e.code : 'NETWORK'
       if (code === 'FORBIDDEN') onLogout()
-      setMessage(code === 'NOT_WAITING' ? 'Game đã được mở trước đó.' : 'Có lỗi kết nối, thử lại nhé.')
+      setMessage(code === 'NOT_WAITING' ? 'Game đã được mở hoặc đang chạy thử.' : 'Có lỗi kết nối, thử lại nhé.')
     },
     [onLogout],
   )
@@ -120,6 +120,7 @@ function Dashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => v
   const refresh = useCallback(() => adminApi.results(adminKey).then(setRows).catch(fail), [adminKey, fail])
 
   const status = state?.status
+  const testMode = !!state?.testMode
   useEffect(() => {
     refresh()
     const id = setInterval(refresh, 5000)
@@ -146,6 +147,9 @@ function Dashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => v
   const closeGame = () =>
     confirm('Kết thúc game ngay? Bài của mọi người sẽ được tự động nộp.') &&
     run(() => adminApi.close(adminKey), 'Đã kết thúc game.')
+  const endTestMode = () =>
+    confirm('Tắt chạy thử? Toàn bộ bài thi thử sẽ bị xoá và game về trạng thái chờ, sẵn sàng cho sự kiện. Muốn giữ kết quả thử thì bấm “Tải kết quả” trước.') &&
+    run(() => adminApi.setTestMode(adminKey, false), 'Đã tắt chạy thử. Game về trạng thái chờ.')
   const disqualify = (row: ResultRow) => {
     if (row.disqualified) return run(() => adminApi.disqualify(adminKey, row.id, null))
     const reason = prompt(`Lý do loại ${row.name}?`, 'Thông tin không hợp lệ')
@@ -204,8 +208,8 @@ function Dashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => v
 
       <section className="card admin-control">
         <div className="admin-status">
-          <span className={`pill pill--${status ?? 'waiting'}`}>{status ? STATUS_LABEL[status] : '…'}</span>
-          {status === 'open' && <span className="admin-countdown">{formatCountdown(remaining)}</span>}
+          <span className={`pill pill--${status ?? 'waiting'}`}>{testMode ? 'Đang chạy thử' : status ? STATUS_LABEL[status] : '…'}</span>
+          {status === 'open' && !testMode && <span className="admin-countdown">{formatCountdown(remaining)}</span>}
         </div>
         <dl className="admin-stats">
           <div>
@@ -222,12 +226,20 @@ function Dashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => v
           </div>
         </dl>
         <div className="admin-actions">
-          {status === 'waiting' && (
+          {testMode && (
+            <>
+              <p className="muted">Không có màn chờ: ai vào cũng làm bài ngay, mỗi người 20 phút tính từ lúc vào. Trước sự kiện nhớ tắt chạy thử.</p>
+              <Button onClick={endTestMode} disabled={busy}>
+                Tắt chạy thử, chuẩn bị sự kiện
+              </Button>
+            </>
+          )}
+          {status === 'waiting' && !testMode && (
             <Button onClick={openGame} disabled={busy}>
               Mở game (20 phút)
             </Button>
           )}
-          {status === 'open' && (
+          {status === 'open' && !testMode && (
             <Button variant="glass" onClick={closeGame} disabled={busy}>
               Kết thúc sớm
             </Button>
@@ -313,7 +325,7 @@ function Dashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => v
         </div>
       </section>
 
-      <Tools adminKey={adminKey} status={status} busy={busy} run={run} />
+      <Tools adminKey={adminKey} status={status} testMode={testMode} busy={busy} run={run} />
     </main>
   )
 }
@@ -321,11 +333,13 @@ function Dashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => v
 function Tools({
   adminKey,
   status,
+  testMode,
   busy,
   run,
 }: {
   adminKey: string
   status: string | undefined
+  testMode: boolean
   busy: boolean
   run: (action: () => Promise<unknown>, done?: string) => Promise<void>
 }) {
@@ -344,6 +358,9 @@ function Tools({
     const typed = prompt('Xoá TOÀN BỘ bài thi và đưa game về trạng thái chờ? Gõ XOA để xác nhận.')
     if (typed?.trim().toUpperCase() === 'XOA') run(() => adminApi.reset(adminKey), 'Đã xoá toàn bộ bài thi, game về trạng thái chờ.')
   }
+  const startTestMode = () =>
+    confirm('Bật chạy thử? Bỏ màn chờ: ai quét QR vào cũng làm bài ngay, mỗi người 20 phút tính từ lúc vào.') &&
+    run(() => adminApi.setTestMode(adminKey, true), 'Đã bật chạy thử.')
 
   return (
     <details className="card admin-tools">
@@ -359,7 +376,10 @@ function Tools({
         <div>
           <p className="admin-tool-title">Chạy thử</p>
           <div className="admin-actions">
-            <Button variant="glass" onClick={() => run(() => adminApi.setRemaining(adminKey, 65), 'Đã tua: còn 65 giây.')} disabled={busy || status !== 'open'}>
+            <Button variant="glass" onClick={startTestMode} disabled={busy || testMode || status !== 'waiting'}>
+              Bật chạy thử (bỏ màn chờ)
+            </Button>
+            <Button variant="glass" onClick={() => run(() => adminApi.setRemaining(adminKey, 65), 'Đã tua: còn 65 giây.')} disabled={busy || testMode || status !== 'open'}>
               Tua: còn 65 giây
             </Button>
             <Button variant="glass" onClick={resetAll} disabled={busy}>
@@ -443,7 +463,14 @@ function QrBoard({ adminKey }: { adminKey: string }) {
           <li>Điền họ tên, số điện thoại, phòng ban</li>
         </ol>
         <div className="board-status rise">
-          {status === 'open' ? (
+          {state?.testMode ? (
+            <>
+              <span key={state.lobbyCount} className="board-number count-bump">
+                {state.lobbyCount}
+              </span>
+              <span>người đã vào chơi thử</span>
+            </>
+          ) : status === 'open' ? (
             <>
               <span className="board-number">{formatCountdown((state?.endsAt ?? 0) - now)}</span>
               <span>Game đang diễn ra · vào muộn sẽ còn ít thời gian hơn</span>

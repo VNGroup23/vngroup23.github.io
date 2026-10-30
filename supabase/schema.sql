@@ -23,6 +23,9 @@ create table if not exists public.game (
   results_revealed boolean not null default false
 );
 insert into public.game (id) values (1) on conflict do nothing;
+-- Rehearsal mode: no lobby, everyone plays as soon as they join with their own
+-- duration_seconds counted from joining.
+alter table public.game add column if not exists test_mode boolean not null default false;
 
 create table if not exists public.departments (
   name text primary key,
@@ -115,7 +118,16 @@ language sql stable as $$ select (extract(epoch from ts) * 1000)::bigint $$;
 -- An open game whose time is up counts as closed even before anyone updates the row.
 create or replace function public._status(g public.game) returns text
 language sql stable as $$
-  select case when g.status = 'open' and g.ends_at is not null and now() >= g.ends_at then 'closed' else g.status end
+  select case
+    when g.test_mode then 'open'
+    when g.status = 'open' and g.ends_at is not null and now() >= g.ends_at then 'closed'
+    else g.status end
+$$;
+
+-- When an attempt's time runs out: BTC's closing time, or in test mode its own window.
+create or replace function public._deadline(a public.attempts, g public.game) returns timestamptz
+language sql stable as $$
+  select case when g.test_mode then a.entered_at + make_interval(secs => g.duration_seconds) else g.ends_at end
 $$;
 
 create or replace function public._attempt_json(a public.attempts) returns json
@@ -126,15 +138,17 @@ language sql stable as $$
     'player', json_build_object('name', a.name, 'phone', a.phone, 'department', a.department),
     'enteredAt', public._ms(a.entered_at),
     'submittedAt', public._ms(a.submitted_at),
-    'autoSubmitted', a.auto_submitted)
+    'autoSubmitted', a.auto_submitted,
+    'deadline', (select public._ms(public._deadline(a, g)) from game g where g.id = 1))
 $$;
 
--- Once the game is closed, unsubmitted attempts count as submitted at closing time.
+-- Unsubmitted attempts whose time is up count as submitted at their deadline.
 create or replace function public._settle_all() returns void
 language sql security definer set search_path = public as $$
-  update attempts a set submitted_at = g.ends_at, auto_submitted = true
+  update attempts a set submitted_at = public._deadline(a, g), auto_submitted = true
   from game g
-  where g.id = 1 and a.submitted_at is null and public._status(g) = 'closed'
+  where g.id = 1 and a.submitted_at is null
+    and (public._status(g) = 'closed' or (g.test_mode and now() >= public._deadline(a, g)))
 $$;
 
 create or replace function public._admin_ok(p_key text) returns boolean
@@ -163,6 +177,7 @@ language sql stable security definer set search_path = public as $$
     'endsAt', public._ms(g.ends_at),
     'lobbyCount', (select count(*) from attempts),
     'resultsRevealed', g.results_revealed,
+    'testMode', g.test_mode,
     'serverNow', public._ms(clock_timestamp()))
   from game g where g.id = 1
 $$;
@@ -277,7 +292,7 @@ begin
   if not found then raise exception 'NOT_FOUND'; end if;
   if v.submitted_at is not null then raise exception 'ALREADY_SUBMITTED'; end if;
   select * into g from game where id = 1;
-  if public._status(g) <> 'open' then raise exception 'NOT_OPEN'; end if;
+  if public._status(g) <> 'open' or now() >= coalesce(public._deadline(v, g), 'infinity') then raise exception 'NOT_OPEN'; end if;
   if split_part(p_option_id, ':', 1) <> p_question_id or not (p_question_id = any (v.question_order)) then
     raise exception 'NOT_FOUND';
   end if;
@@ -292,16 +307,18 @@ end $$;
 
 create or replace function public.submit_attempt(p_token text) returns json
 language plpgsql security definer set search_path = public as $$
-declare v attempts; g game;
+declare v attempts; g game; v_deadline timestamptz;
 begin
   select * into g from game where id = 1;
-  -- A submit that lands within 1.5s of the deadline came from the client's own countdown.
-  update attempts
-  set submitted_at = least(now(), coalesce(g.ends_at, now())),
-      auto_submitted = g.ends_at is not null and now() >= g.ends_at - interval '1.5 seconds'
-  where token = p_token and submitted_at is null;
   select * into v from attempts where token = p_token;
   if not found then raise exception 'NOT_FOUND'; end if;
+  v_deadline := public._deadline(v, g);
+  -- A submit that lands within 1.5s of the deadline came from the client's own countdown.
+  update attempts
+  set submitted_at = least(now(), coalesce(v_deadline, now())),
+      auto_submitted = v_deadline is not null and now() >= v_deadline - interval '1.5 seconds'
+  where id = v.id and submitted_at is null;
+  select * into v from attempts where id = v.id;
   return public._attempt_json(v);
 end $$;
 
@@ -321,7 +338,7 @@ begin
   perform public._require_admin(p_key);
   update game
   set status = 'open', opened_at = now(), ends_at = now() + make_interval(secs => duration_seconds), results_revealed = false
-  where id = 1 and status = 'waiting';
+  where id = 1 and status = 'waiting' and not test_mode;
   if not found then raise exception 'NOT_WAITING'; end if;
   return public.get_state();
 end $$;
@@ -330,7 +347,7 @@ create or replace function public.admin_close(p_key text) returns json
 language plpgsql security definer set search_path = public as $$
 begin
   perform public._require_admin(p_key);
-  update game set status = 'closed', ends_at = least(coalesce(ends_at, now()), now()) where id = 1;
+  update game set status = 'closed', ends_at = least(coalesce(ends_at, now()), now()) where id = 1 and not test_mode;
   perform public._settle_all();
   return public.get_state();
 end $$;
@@ -362,6 +379,25 @@ begin
   perform public._require_admin(p_key);
   delete from attempts where true;
   update game set status = 'waiting', opened_at = null, ends_at = null, results_revealed = false where id = 1;
+  return public.get_state();
+end $$;
+
+-- Test mode on: whoever waits in the lobby starts now. Off: the rehearsal attempts are
+-- wiped and the game goes back to "waiting", ready for the real event.
+create or replace function public.admin_set_test_mode(p_key text, p_on boolean) returns json
+language plpgsql security definer set search_path = public as $$
+declare g game;
+begin
+  perform public._require_admin(p_key);
+  select * into g from game where id = 1 for update;
+  if p_on and not g.test_mode then
+    if g.status <> 'waiting' then raise exception 'NOT_WAITING'; end if;
+    update game set test_mode = true, results_revealed = false where id = 1;
+    update attempts set entered_at = now() where submitted_at is null;
+  elsif not p_on and g.test_mode then
+    delete from attempts where true;
+    update game set test_mode = false, status = 'waiting', opened_at = null, ends_at = null, results_revealed = false where id = 1;
+  end if;
   return public.get_state();
 end $$;
 
@@ -470,6 +506,7 @@ grant execute on function
   public.admin_set_remaining(text, int),
   public.admin_reveal(text, boolean),
   public.admin_reset(text),
+  public.admin_set_test_mode(text, boolean),
   public.admin_results(text),
   public.admin_disqualify(text, uuid, text),
   public.admin_answer_log(text),
