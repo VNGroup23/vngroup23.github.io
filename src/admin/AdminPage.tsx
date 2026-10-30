@@ -4,7 +4,7 @@ import { adminApi, type ResultRow } from '../api/admin'
 import { SparkleField } from '../components/Effects'
 import { downloadQr, QrImage } from '../components/QrImage'
 import { Button, DiamondDivider, Logo } from '../components/ui'
-import { TOP_N } from '../config'
+import { GAME_MINUTES, TOP_N } from '../config'
 import { asText, downloadCsv } from '../lib/csv'
 import { playUrl } from '../lib/entry'
 import { formatClock, formatCountdown, formatDateTime, formatDuration, formatPhone } from '../lib/format'
@@ -142,7 +142,7 @@ function Dashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => v
   }
 
   const openGame = () =>
-    confirm('Mở game? Đồng hồ 20 phút bắt đầu chạy ngay cho tất cả người chơi.') &&
+    confirm(`Mở game? Đồng hồ ${GAME_MINUTES} phút bắt đầu chạy ngay cho tất cả người chơi.`) &&
     run(() => adminApi.open(adminKey), 'Đã mở game.')
   const closeGame = () =>
     confirm('Kết thúc game ngay? Bài của mọi người sẽ được tự động nộp.') &&
@@ -227,7 +227,7 @@ function Dashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => v
         <div className="admin-actions">
           {testMode && (
             <>
-              <p className="muted">Không có màn chờ: ai vào cũng làm bài ngay, mỗi người 20 phút tính từ lúc vào. Trước sự kiện nhớ tắt chạy thử.</p>
+              <p className="muted">Không có màn chờ: ai vào cũng làm bài ngay, mỗi người {GAME_MINUTES} phút tính từ lúc vào. Trước sự kiện nhớ tắt chạy thử.</p>
               <Button onClick={endTestMode} disabled={busy}>
                 Tắt chạy thử, chuẩn bị sự kiện
               </Button>
@@ -235,7 +235,7 @@ function Dashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => v
           )}
           {status === 'waiting' && !testMode && (
             <Button onClick={openGame} disabled={busy}>
-              Mở game (20 phút)
+              Mở game ({GAME_MINUTES} phút)
             </Button>
           )}
           {status === 'open' && !testMode && (
@@ -345,7 +345,7 @@ function Tools({
     if (typed?.trim().toUpperCase() === 'XOA') run(() => adminApi.reset(adminKey), 'Đã xoá toàn bộ bài thi, game về trạng thái chờ.')
   }
   const startTestMode = () =>
-    confirm('Bật chạy thử? Bỏ màn chờ: ai quét QR vào cũng làm bài ngay, mỗi người 20 phút tính từ lúc vào.') &&
+    confirm(`Bật chạy thử? Bỏ màn chờ: ai quét QR vào cũng làm bài ngay, mỗi người ${GAME_MINUTES} phút tính từ lúc vào.`) &&
     run(() => adminApi.setTestMode(adminKey, true), 'Đã bật chạy thử.')
 
   return (

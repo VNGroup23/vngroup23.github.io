@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import type { Attempt } from '../api'
 import { Icon } from '../components/Icon'
 import { Logo, stagger } from '../components/ui'
-import { TOP_N } from '../config'
+import { GAME_MINUTES, TOP_N } from '../config'
 import { formatPhone } from '../lib/format'
 
 const RULES = [
-  '20 phút cho cả bài thi, tính từ lúc BTC mở game. Vào muộn sẽ còn ít thời gian hơn.',
+  `${GAME_MINUTES} phút cho cả bài thi, tính từ lúc BTC mở game. Vào muộn sẽ còn ít thời gian hơn.`,
   'Mỗi người có thứ tự câu hỏi và đáp án khác nhau.',
   `Đúng từ 80% số câu trở lên mới được xét Top ${TOP_N}.`,
   'Bằng điểm: ai nhanh hơn xếp trên. Bằng cả giờ: ai vào sớm hơn xếp trên.',

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { mockDev, type LeaderRow } from '../api/mock'
+import { GAME_MINUTES } from '../config'
 import { formatCountdown } from '../lib/format'
 import { useGame } from '../lib/useGame'
 
@@ -26,7 +27,7 @@ export function DevPanel() {
             Bản xem trước · trạng thái game: <b>{state?.status}</b>
           </p>
           <div className="dev-actions">
-            <button type="button" onClick={() => mockDev.open()}>▶ Mở game (20 phút)</button>
+            <button type="button" onClick={() => mockDev.open()}>▶ Mở game ({GAME_MINUTES} phút)</button>
             <button type="button" onClick={() => mockDev.setRemaining(65_000)}>⏩ Tua: còn 65 giây</button>
             <button type="button" onClick={() => mockDev.setRemaining(5_000)}>⏩ Tua: còn 5 giây</button>
             <button type="button" onClick={() => mockDev.close()}>■ Đóng game</button>

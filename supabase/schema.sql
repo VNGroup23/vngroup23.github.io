@@ -18,11 +18,14 @@ create table if not exists public.game (
   status text not null default 'waiting' check (status in ('waiting', 'open', 'closed')),
   opened_at timestamptz,
   ends_at timestamptz,
-  duration_seconds int not null default 1200,
+  duration_seconds int not null default 600,
   pass_rate numeric not null default 0.8,
   results_revealed boolean not null default false
 );
 insert into public.game (id) values (1) on conflict do nothing;
+-- Each game lasts 10 minutes.
+alter table public.game alter column duration_seconds set default 600;
+update public.game set duration_seconds = 600 where id = 1 and duration_seconds <> 600;
 -- Rehearsal mode: no lobby, everyone plays as soon as they join with their own
 -- duration_seconds counted from joining.
 alter table public.game add column if not exists test_mode boolean not null default false;

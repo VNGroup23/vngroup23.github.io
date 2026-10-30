@@ -41,6 +41,8 @@ try {
   const { rows: key } = await client.query('select q.id, q.correct, q.keep_order, cardinality(q.options) as n from questions q')
   const correct = Object.fromEntries(key.map((r) => [r.id, r.correct]))
   const { rows: cfg } = await client.query('select entry_code from app_config where id = 1')
+  const { rows: game } = await client.query('select duration_seconds * 1000 as ms from game where id = 1')
+  const DURATION = Number(game[0].ms)
   const ENTRY = cfg[0].entry_code
   const optionCount = Object.fromEntries(key.map((r) => [r.id, r.n]))
   const total = key.length
@@ -69,7 +71,7 @@ try {
   check('wrong admin key is refused', (await callError('admin_open', 'nope')) === 'FORBIDDEN')
 
   const opened = await call('admin_open', KEY)
-  check('admin opens the game', opened.status === 'open' && opened.endsAt - opened.openedAt === 1200000)
+  check('admin opens the game', opened.status === 'open' && opened.endsAt - opened.openedAt === DURATION)
   check('cannot open twice', (await callError('admin_open', KEY)) === 'NOT_WAITING')
 
   const quiz = await call('get_quiz', a.token)
@@ -131,16 +133,16 @@ try {
   check('test mode: the real game cannot be opened', (await callError('admin_open', KEY)) === 'NOT_WAITING')
   check('test mode: lobby player gets own deadline', (await call('get_attempt', t0.token)).deadline !== null)
   const t1 = await call('join_game', 'Hoàng Văn Thử', '0955444333', ENTRY, null)
-  check('test mode: own 20 minutes from joining', t1.deadline - t1.enteredAt === 1200000)
+  check('test mode: own window from joining', t1.deadline - t1.enteredAt === DURATION)
   const tq = await call('get_quiz', t1.token)
   check('test mode: quiz opens right away', tq.questions.length === total)
   await call('save_answer', t1.token, tq.questions[0].id, `${tq.questions[0].id}:0`)
-  await asOwner("update attempts set entered_at = now() - interval '21 minutes' where token = $1", [t1.token])
+  await asOwner("update attempts set entered_at = now() - interval '1 minute' - make_interval(secs => (select duration_seconds from game)) where token = $1", [t1.token])
   check('test mode: answers refused once own time is up', (await callError('save_answer', t1.token, tq.questions[1].id, `${tq.questions[1].id}:0`)) === 'NOT_OPEN')
   const t1Settled = await call('get_attempt', t1.token)
   check('test mode: own time up auto-submits at the deadline', t1Settled.autoSubmitted === true && t1Settled.submittedAt === t1Settled.deadline)
   check('test mode: others keep playing', (await call('get_attempt', t0.token)).submittedAt === null)
-  check('test mode: timed-out player is ranked by own window', (await call('admin_results', KEY)).find((r) => r.code === t1.code).durationMs === 1200000)
+  check('test mode: timed-out player is ranked by own window', (await call('admin_results', KEY)).find((r) => r.code === t1.code).durationMs === DURATION)
   const off = await call('admin_set_test_mode', KEY, false)
   check('test mode off: rehearsal wiped, back to waiting', off.status === 'waiting' && off.testMode === false && off.lobbyCount === 0)
 } catch (e) {
