@@ -1,7 +1,6 @@
 // In-browser stand-in for the real backend, so the UI can be previewed before Supabase is set up.
 // State lives in localStorage and syncs across tabs through the `storage` event.
 import { GAME_DURATION_MS, PASS_RATE, SESSION_KEY } from '../config'
-import { DEPARTMENTS } from '../data/departments'
 import { SAMPLE_QUESTIONS } from '../data/questions.sample'
 import { hashSeed, mulberry32, randomToken, shuffled } from '../lib/rng'
 import { sameName } from '../lib/validate'
@@ -128,8 +127,6 @@ export const mockApi: GameApi = {
     return () => listeners.delete(onChange)
   },
 
-  getDepartments: () => later(DEPARTMENTS),
-
   // Any code passes in the preview; the DEV panel links to `?k=DEMO`.
   checkEntry: (code) => later(code.trim().length > 0),
 
@@ -202,7 +199,6 @@ export const mockApi: GameApi = {
 export interface LeaderRow {
   rank: number | null
   name: string
-  department: string
   correct: number
   total: number
   durationMs: number
@@ -251,7 +247,7 @@ export const mockDev = {
       .map((a) => {
         const correct = Object.entries(a.answers).filter(([qid, oid]) => oid === `${qid}:${byId.get(qid)?.correct}`).length
         const start = Math.max(a.enteredAt, db.game.openedAt ?? a.enteredAt)
-        return { name: a.player.name, department: a.player.department, correct, total, durationMs: (a.submittedAt ?? start) - start, enteredAt: a.enteredAt }
+        return { name: a.player.name, correct, total, durationMs: (a.submittedAt ?? start) - start, enteredAt: a.enteredAt }
       })
       .sort((x, y) => y.correct - x.correct || x.durationMs - y.durationMs || x.enteredAt - y.enteredAt)
     let rank = 0
@@ -261,7 +257,7 @@ export const mockDev = {
   seedPreview(kind: string) {
     const now = Date.now()
     const db = freshDb()
-    const player = { name: 'Nguyễn Văn An', phone: '0912345678', department: 'IT' }
+    const player = { name: 'Nguyễn Văn An', phone: '0912345678' }
     const a = newAttempt(db, player, now - 90_000)
     db.attempts[player.phone] = a
     const openAt = (msAgo: number) => {

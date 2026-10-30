@@ -6,7 +6,6 @@ export interface ResultRow {
   rank: number | null
   name: string
   phone: string
-  department: string
   code: string
   correct: number
   answered: number
@@ -46,5 +45,4 @@ export const adminApi = {
   answerLog: (key: string) => rpc<AnswerLogRow[]>('admin_answer_log', { p_key: key }),
   entryCode: (key: string) => rpc<string>('admin_entry', { p_key: key }),
   rotateEntryCode: (key: string) => rpc<string>('admin_rotate_entry', { p_key: key }),
-  setDepartments: (key: string, names: string[]) => rpc<string[]>('admin_set_departments', { p_key: key, p_names: names }),
 }

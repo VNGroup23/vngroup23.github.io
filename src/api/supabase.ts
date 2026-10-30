@@ -51,15 +51,12 @@ export const supabaseApi: GameApi = {
     }
   },
 
-  getDepartments: () => rpc<string[]>('get_departments'),
-
   checkEntry: (code) => rpc<boolean>('check_entry', { p_code: code }),
 
   join: (p, entryCode) =>
     rpc<Attempt>('join_game', {
       p_name: p.name,
       p_phone: p.phone,
-      p_department: p.department,
       p_entry: entryCode,
       p_user_agent: navigator.userAgent,
     }),

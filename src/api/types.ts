@@ -16,7 +16,6 @@ export interface GameState {
 export interface Player {
   name: string
   phone: string
-  department: string
 }
 
 export interface Attempt {
@@ -57,7 +56,6 @@ export const API_ERROR_CODES = [
   'ALREADY_SUBMITTED',
   'INVALID_NAME',
   'INVALID_PHONE',
-  'INVALID_DEPARTMENT',
   'NO_QUESTIONS',
   'NOT_WAITING',
   'FORBIDDEN',
@@ -78,7 +76,6 @@ export class ApiError extends Error {
 export interface GameApi {
   getState(): Promise<GameState>
   subscribe(onChange: (state: GameState) => void): () => void
-  getDepartments(): Promise<string[]>
   /** Whether a code from the event-screen QR code is the current entry code. */
   checkEntry(code: string): Promise<boolean>
   /** Creates an attempt, or resumes the existing one when phone and name match. Needs the QR entry code. */

@@ -27,12 +27,6 @@ insert into public.game (id) values (1) on conflict do nothing;
 -- duration_seconds counted from joining.
 alter table public.game add column if not exists test_mode boolean not null default false;
 
-create table if not exists public.departments (
-  name text primary key,
-  position int not null default 0
-);
-insert into public.departments (name, position) values ('IT', 1) on conflict do nothing;
-
 create table if not exists public.questions (
   id text primary key,
   position int not null,
@@ -49,7 +43,6 @@ create table if not exists public.attempts (
   code text not null unique,
   name text not null,
   phone text not null unique,
-  department text not null,
   entered_at timestamptz not null default now(),
   submitted_at timestamptz,
   auto_submitted boolean not null default false,
@@ -78,15 +71,21 @@ create table if not exists public.answer_log (
 );
 create index if not exists answer_log_attempt_idx on public.answer_log (attempt_id);
 
+-- Players no longer pick a department.
+drop function if exists public.get_departments();
+drop function if exists public.admin_set_departments(text, text[]);
+drop function if exists public.join_game(text, text, text, text, text);
+drop table if exists public.departments;
+alter table public.attempts drop column if exists department;
+
 alter table public.app_config enable row level security;
 alter table public.game enable row level security;
-alter table public.departments enable row level security;
 alter table public.questions enable row level security;
 alter table public.attempts enable row level security;
 alter table public.answers enable row level security;
 alter table public.answer_log enable row level security;
 
-revoke all on public.app_config, public.game, public.departments, public.questions,
+revoke all on public.app_config, public.game, public.questions,
   public.attempts, public.answers, public.answer_log from anon, authenticated;
 
 -- The game row holds only status and times; clients read it to get realtime updates.
@@ -135,7 +134,7 @@ language sql stable as $$
   select json_build_object(
     'token', a.token,
     'code', a.code,
-    'player', json_build_object('name', a.name, 'phone', a.phone, 'department', a.department),
+    'player', json_build_object('name', a.name, 'phone', a.phone),
     'enteredAt', public._ms(a.entered_at),
     'submittedAt', public._ms(a.submitted_at),
     'autoSubmitted', a.auto_submitted,
@@ -182,18 +181,13 @@ language sql stable security definer set search_path = public as $$
   from game g where g.id = 1
 $$;
 
-create or replace function public.get_departments() returns text[]
-language sql stable security definer set search_path = public as $$
-  select coalesce(array_agg(name order by position, name), '{}') from departments
-$$;
-
 create or replace function public.check_entry(p_code text) returns boolean
 language sql stable security definer set search_path = public as $$
   select coalesce((select entry_code is not null and upper(trim(coalesce(p_code, ''))) = entry_code from app_config where id = 1), false)
 $$;
 
 drop function if exists public.join_game(text, text, text, text);
-create or replace function public.join_game(p_name text, p_phone text, p_department text, p_entry text, p_user_agent text default null)
+create or replace function public.join_game(p_name text, p_phone text, p_entry text, p_user_agent text default null)
 returns json language plpgsql security definer set search_path = public, extensions as $$
 declare
   v_name text := regexp_replace(trim(normalize(coalesce(p_name, ''), NFC)), '\s+', ' ', 'g');
@@ -206,7 +200,6 @@ begin
   if v_phone like '+84%' then v_phone := '0' || substr(v_phone, 4); end if;
   if v_phone !~ '^0[35789][0-9]{8}$' then raise exception 'INVALID_PHONE'; end if;
   if v_name !~ '^[[:alpha:]]+( [[:alpha:]]+)+$' or length(v_name) > 50 then raise exception 'INVALID_NAME'; end if;
-  if not exists (select 1 from departments where name = p_department) then raise exception 'INVALID_DEPARTMENT'; end if;
 
   select * into v_row from attempts where phone = v_phone;
   if found then
@@ -226,13 +219,12 @@ begin
   end loop;
 
   begin
-    insert into attempts (token, code, name, phone, department, question_order, option_order, user_agent)
+    insert into attempts (token, code, name, phone, question_order, option_order, user_agent)
     values (
       encode(gen_random_bytes(16), 'hex'),
       v_code,
       v_name,
       v_phone,
-      p_department,
       (select array_agg(id order by random()) from questions),
       (select jsonb_object_agg(q.id, (
          select jsonb_agg(i order by case when q.keep_order then i::float8 else random() end)
@@ -429,7 +421,7 @@ begin
         case when f.qualified then row_number() over (partition by f.qualified order by f.correct desc, f.duration_ms, f.entered_at) end as rank
       from flagged f)
     select json_agg(json_build_object(
-      'id', r.id, 'rank', r.rank, 'name', r.name, 'phone', r.phone, 'department', r.department, 'code', r.code,
+      'id', r.id, 'rank', r.rank, 'name', r.name, 'phone', r.phone, 'code', r.code,
       'correct', r.correct, 'answered', r.answered, 'total', v_total,
       'durationMs', round(r.duration_ms), 'enteredAt', public._ms(r.entered_at), 'submittedAt', public._ms(r.submitted_at),
       'autoSubmitted', r.auto_submitted, 'qualified', r.qualified,
@@ -477,25 +469,13 @@ begin
   return v_code;
 end $$;
 
-create or replace function public.admin_set_departments(p_key text, p_names text[]) returns text[]
-language plpgsql security definer set search_path = public as $$
-begin
-  perform public._require_admin(p_key);
-  delete from departments where true;
-  insert into departments (name, position)
-  select trim(n), ord from unnest(p_names) with ordinality as t(n, ord) where trim(n) <> ''
-  on conflict do nothing;
-  return public.get_departments();
-end $$;
-
 -- ---- Permissions --------------------------------------------------------------------
 
 revoke execute on all functions in schema public from public, anon, authenticated;
 grant execute on function
   public.get_state(),
-  public.get_departments(),
   public.check_entry(text),
-  public.join_game(text, text, text, text, text),
+  public.join_game(text, text, text, text),
   public.get_attempt(text),
   public.get_quiz(text),
   public.save_answer(text, text, text),
@@ -511,6 +491,5 @@ grant execute on function
   public.admin_disqualify(text, uuid, text),
   public.admin_answer_log(text),
   public.admin_entry(text),
-  public.admin_rotate_entry(text),
-  public.admin_set_departments(text, text[])
+  public.admin_rotate_entry(text)
 to anon, authenticated;

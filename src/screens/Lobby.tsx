@@ -29,7 +29,7 @@ export function Lobby({ attempt, lobbyCount }: { attempt: Attempt; lobbyCount: n
         <p className="eyebrow">Xin chào</p>
         <h1 className="title">{attempt.player.name}</h1>
         <p className="body muted">
-          {attempt.player.department} · {formatPhone(attempt.player.phone)}
+          {formatPhone(attempt.player.phone)}
         </p>
       </header>
       <div className="medallion rise" style={stagger(2)}>

@@ -44,59 +44,6 @@ export function Field({
   )
 }
 
-export function SelectField({
-  label,
-  value,
-  options,
-  onChange,
-  name,
-  placeholder,
-  error,
-}: {
-  label: string
-  value: string
-  options: string[]
-  onChange: (v: string) => void
-  name: string
-  placeholder?: string
-  error?: string
-}) {
-  return (
-    <div className={`field${error ? ' is-error' : ''}`}>
-      <label className="eyebrow field-label" htmlFor={name}>
-        {label}
-      </label>
-      <div className="select-wrap">
-        <select
-          className={`field-input${value ? '' : ' is-placeholder'}`}
-          id={name}
-          name={name}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          aria-invalid={!!error}
-        >
-          {placeholder && (
-            <option value="" disabled>
-              {placeholder}
-            </option>
-          )}
-          {options.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
-        <Icon name="chevron-down" className="select-chevron" />
-      </div>
-      {error && (
-        <p className="field-hint" role="alert">
-          {error}
-        </p>
-      )}
-    </div>
-  )
-}
-
 export function AnswerOption({
   letter,
   text,

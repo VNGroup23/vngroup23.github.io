@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { api, ApiError, isMock } from '../api'
+import { ApiError, isMock } from '../api'
 import { adminApi, type ResultRow } from '../api/admin'
 import { SparkleField } from '../components/Effects'
 import { downloadQr, QrImage } from '../components/QrImage'
@@ -158,12 +158,11 @@ function Dashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => v
 
   const exportResults = () =>
     downloadCsv(`ket-qua-23-nam-${Date.now()}.csv`, [
-      ['Hạng', 'Họ và tên', 'Số điện thoại', 'Phòng ban', 'Số câu đúng', 'Tổng số câu', 'Tỉ lệ đúng', 'Thời gian làm bài (giây)', 'Vào lúc', 'Nộp lúc', 'Tự động nộp', 'Đạt ≥80%', 'Bị loại', 'Lý do loại', 'Mã bài làm', 'Thiết bị'],
+      ['Hạng', 'Họ và tên', 'Số điện thoại', 'Số câu đúng', 'Tổng số câu', 'Tỉ lệ đúng', 'Thời gian làm bài (giây)', 'Vào lúc', 'Nộp lúc', 'Tự động nộp', 'Đạt ≥80%', 'Bị loại', 'Lý do loại', 'Mã bài làm', 'Thiết bị'],
       ...rows.map((r) => [
         r.rank ?? '',
         r.name,
         asText(r.phone),
-        r.department,
         r.correct,
         r.total,
         `${Math.round((r.correct / Math.max(1, r.total)) * 1000) / 10}%`,
@@ -277,7 +276,6 @@ function Dashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => v
                 <th>Hạng</th>
                 <th>Họ và tên</th>
                 <th>SĐT</th>
-                <th>Phòng ban</th>
                 <th>Đúng</th>
                 <th>Thời gian</th>
                 <th>Vào lúc</th>
@@ -289,7 +287,7 @@ function Dashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => v
             <tbody>
               {shown.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="results-empty">
+                  <td colSpan={9} className="results-empty">
                     {view === 'top' ? 'Chưa có ai đạt từ 80% trở lên.' : 'Chưa có người chơi.'}
                   </td>
                 </tr>
@@ -302,7 +300,6 @@ function Dashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => v
                     {r.disqualified && <span className="results-reason">Bị loại: {r.disqualifyReason}</span>}
                   </td>
                   <td>{formatPhone(r.phone)}</td>
-                  <td>{r.department}</td>
                   <td>
                     {r.correct}/{r.total}
                   </td>
@@ -343,17 +340,6 @@ function Tools({
   busy: boolean
   run: (action: () => Promise<unknown>, done?: string) => Promise<void>
 }) {
-  const [departments, setDepartments] = useState('')
-
-  useEffect(() => {
-    api.getDepartments().then((list) => setDepartments(list.join('\n'))).catch(() => {})
-  }, [])
-
-  const saveDepartments = () => {
-    const names = departments.split('\n').map((s) => s.trim()).filter(Boolean)
-    if (!names.length) return
-    run(async () => setDepartments((await adminApi.setDepartments(adminKey, names)).join('\n')), 'Đã lưu danh sách phòng ban.')
-  }
   const resetAll = () => {
     const typed = prompt('Xoá TOÀN BỘ bài thi và đưa game về trạng thái chờ? Gõ XOA để xác nhận.')
     if (typed?.trim().toUpperCase() === 'XOA') run(() => adminApi.reset(adminKey), 'Đã xoá toàn bộ bài thi, game về trạng thái chờ.')
@@ -364,15 +350,8 @@ function Tools({
 
   return (
     <details className="card admin-tools">
-      <summary className="eyebrow">Cài đặt & công cụ chạy thử</summary>
+      <summary className="eyebrow">Công cụ chạy thử</summary>
       <div className="admin-tools-body">
-        <div>
-          <p className="admin-tool-title">Danh sách phòng ban (mỗi dòng một phòng)</p>
-          <textarea className="field-input admin-textarea" value={departments} onChange={(e) => setDepartments(e.target.value)} placeholder={'IT\nKế toán\nNhân sự'} />
-          <Button variant="glass" onClick={saveDepartments} disabled={busy}>
-            Lưu phòng ban
-          </Button>
-        </div>
         <div>
           <p className="admin-tool-title">Chạy thử</p>
           <div className="admin-actions">
@@ -460,7 +439,7 @@ function QrBoard({ adminKey }: { adminKey: string }) {
         <ol className="board-steps rise">
           <li>Mở camera điện thoại</li>
           <li>Quét mã QR bên cạnh</li>
-          <li>Điền họ tên, số điện thoại, phòng ban</li>
+          <li>Điền họ tên và số điện thoại</li>
         </ol>
         <div className="board-status rise">
           {state?.testMode ? (

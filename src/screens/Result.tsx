@@ -42,10 +42,6 @@ export function Result({ kind, attempt }: { kind: ResultKind; attempt: Attempt |
               <dd>{formatPhone(attempt.player.phone)}</dd>
             </div>
             <div>
-              <dt>Phòng ban</dt>
-              <dd>{attempt.player.department}</dd>
-            </div>
-            <div>
               <dt>Nộp lúc</dt>
               <dd>
                 {formatClock(attempt.submittedAt)}
